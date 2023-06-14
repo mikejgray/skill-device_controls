@@ -22,12 +22,12 @@
 
 en-us:
   ExitShutdownIntent:
-  - I want you to exit:
-      - exit
-  - I need you to restart:
-      - restart
-  - Neon shut down please:
-      - shutdown
+    - I want you to exit:
+        - exit
+    - I need you to restart:
+        - restart
+    - Neon shut down please:
+        - shutdown
   SkipWWIntent:
     - start skipping wake words
     - skip wake words

@@ -1,3 +1,4 @@
+# pylint: disable=protected-access,missing-docstring
 # NEON AI (TM) SOFTWARE, Software Development Kit & Application Framework
 # All trademark and other rights reserved by their respective owners
 # Copyright 2008-2022 Neongecko.com Inc.
@@ -26,6 +27,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import tempfile
 import shutil
 import pytest
 
@@ -65,10 +67,13 @@ class TestSkillMethods(SkillTestCase):
 
     def tearDown(self) -> None:
         self.skill.bus.remove_all_listeners("neon.wake_words_state")
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        shutil.rmtree(cls.test_fs)
+        self.skill.bus.remove_all_listeners("neon.confirm_listening")
+        self.skill.bus.remove_all_listeners("neon.show_debug")
+        self.skill.bus.remove_all_listeners("neon.wake_words")
+        self.skill.bus.remove_all_listeners("neon.get_wake_words")
+        self.skill.bus.remove_all_listeners("neon.enable_wake_word")
+        self.skill.bus.remove_all_listeners("neon.disable_wake_word")
+        shutil.rmtree(self.temp_dir)
 
     def test_00_skill_init(self):
         # Test any parameters expected to be set in init or initialize methods
@@ -544,7 +549,7 @@ class TestSkillMethods(SkillTestCase):
 
         # Test API not available
         self.skill.handle_change_ww(message_change_hey_neon)
-        self.skill.speak_dialog.assert_called_with("error_no_ww_api")
+        self.skill.speak_dialog.assert_called_with("error_no_ww_api", {"requested_ww": "hey neon"})
         self.skill.handle_change_ww(message_change_no_ww)
         self.skill.speak_dialog.assert_called_with("error_no_ww_api")
 
@@ -672,22 +677,24 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.enable_wake_word", _return_ww_response)
         self.assertEqual(self.skill._enable_wake_word("hey_neon", Message("fake")), True)
 
-    def test_disable_ww(self):
+    def test_disable_ww_none(self):
         def _return_ww_none(message: Message):
             return None
-
-        def _return_ww_error_response(message: Message):
-            return message.response({"error": "error message"})
-
-        def _return_ww_response(message: Message):
-            self.skill.bus.emit(message.response({"ww": "hey_neon"}))
-
         self.skill.bus.once("neon.disable_wake_word", _return_ww_none)
         self.assertEqual(self.skill._disable_wake_word("hey_neon", Message("neon.disable_wake_word")), False)
+
+    def test_disable_ww_error(self):
+        def _return_ww_error_response(message: Message):
+            return message.response({"error": "error message"})
         self.skill.bus.once("neon.disable_wake_word", _return_ww_error_response)
         self.assertEqual(self.skill._disable_wake_word("hey_neon", Message("neon.disable_wake_word")), False)
+
+    def test_disable_ww_success(self):
+        def _return_ww_response(message: Message):
+            self.skill.bus.emit(message.response({"ww": "hey_neon"}))
         self.skill.bus.once("neon.disable_wake_word", _return_ww_response)
         self.assertEqual(self.skill._disable_wake_word("hey_neon", Message("fake")), True)
+
 
     def test_disable_all_ww(self):
         mock_get_ww = self.skill._get_wakewords = Mock()
@@ -758,7 +765,7 @@ class TestSkillMethods(SkillTestCase):
         self.assertListEqual([], self.skill._get_enabled_wakewords(self.configured_but_not_active_ww))
 
     @patch("ovos_config.models.MycroftSystemConfig")
-    @patch("neon_core.patch_config")
+    @patch("neon_core.patch_config")  # NOTE: Will not pass locally without Neon Core installed
     def test_handle_become_neon(self, mock_patch_config, mock_system_patch_config):
         self._set_user_neon_tts_settings = Mock()
         fake_message = Message("test")
@@ -778,7 +785,7 @@ class TestSkillMethods(SkillTestCase):
         self._set_user_neon_tts_settings.assert_called()
         self.skill.speak_dialog.assert_called_with(fake_message)
 
-    @patch("neon_core.patch_config")
+    @patch("neon_core.patch_config")  # NOTE: Will not pass locally without Neon Core installed
     def test_set_jarvis_voice(self, mock_patch_config):
         jarvis_config = {
             "tts": {

@@ -230,10 +230,12 @@ class DeviceControlCenterSkill(NeonSkill):
         Uses remote Mimic3 with en_UK/apope_low voice
         Uses openwakeword "Hey Jarvis" ww
         """
+        self.speak_dialog("be_right_back")
+        self._set_user_jarvis_tts_settings()
         self._enable_wake_word("hey_jarvis", message)
         self._disable_all_other_wake_words(message, "hey_jarvis")
         self._set_jarvis_voice()
-        self._set_user_jarvis_tts_settings()
+        # TODO: Restart the appropriate service?
         self.speak_dialog("jarvis_confirmation")
 
     @intent_handler(IntentBuilder("ChangeWakeWordIntent")

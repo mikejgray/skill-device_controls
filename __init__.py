@@ -443,15 +443,15 @@ class DeviceControlCenterSkill(NeonSkill):
         patch_config(jarvis_config)
 
     def _set_user_jarvis_tts_settings(self) -> None:
-        """Update user ngi_user_info.yml with male settings and en-uk locale."""
+        """Update user ngi_user_info.yml with male settings and en-gb locale."""
         # {
-        #         "tts_language": "en-uk",
+        #         "tts_language": "en-gb",
         #         "tts_gender": "male",
         #         "secondary_tts_gender": "male",
         # }
         LOG.debug("Patching user ngi config for Jarvis TTS")
         user_config = NGIConfig("ngi_user_info", force_reload=True)
-        user_config["speech"]["tts_language"] = "en-uk"
+        user_config["speech"]["tts_language"] = "en-gb"
         user_config["speech"]["tts_gender"] = "male"
         user_config["speech"]["secondary_tts_gender"] = "male"
         user_config.write_changes()

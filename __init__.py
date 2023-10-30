@@ -338,7 +338,7 @@ class DeviceControlCenterSkill(NeonSkill):
         :returns: True on success, False on failure
         """
         self.log.debug(f"Attempting to enable WW: {ww}")
-        resp = self._emit_ww_enable_message(ww, message)
+        resp = self._emit_enable_ww_message(ww, message)
         if resp.data.get('error') == "ww not configured":
             LOG.warning(f"WW not configured at the system level, patching: {ww}")
             patch_config({"hotwords": {"hey_jarvis": {"active": True, "listen": True}}})

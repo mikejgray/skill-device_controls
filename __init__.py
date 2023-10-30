@@ -230,8 +230,8 @@ class DeviceControlCenterSkill(NeonSkill):
         Uses remote Mimic3 with en_UK/apope_low voice
         Uses openwakeword "Hey Jarvis" ww
         """
-        self._disable_all_wake_words(message)
         self._enable_wake_word("hey_jarvis", message)
+        self._disable_all_other_wake_words(message, "hey_jarvis")
         self._set_jarvis_voice()
         self._set_user_jarvis_tts_settings()
         self.speak_dialog("jarvis_confirmation")
@@ -383,7 +383,7 @@ class DeviceControlCenterSkill(NeonSkill):
             self.speak_dialog("confirm_restarting", private=True, wait=True)
             self.bus.emit(Message("system.reboot"))
 
-    def _disable_all_wake_words(self, message: Message) -> bool:
+    def _disable_all_other_wake_words(self, message: Message, ww_to_keep: str) -> bool:
         """Disable all wake words and speak confirmation.
         :returns: True on success, False on failure
         """
@@ -395,14 +395,15 @@ class DeviceControlCenterSkill(NeonSkill):
             if enabled_ww:  # It's possible no WW are enabled
                 self.log.debug(f"Found enabled WWs: {enabled_ww}")
                 for ww in enabled_ww:
-                    spoken_ww = ww.replace("_", " ")
-                    self.log.debug(f"Disabling WW: {ww}")
-                    if self._disable_wake_word(ww, message):
-                        self.speak_dialog("confirm_ww_disabled", {"ww": spoken_ww})
-                        return True
-                    else:
-                        self._speak_disabled_ww_error(spoken_ww)
-                        return False
+                    if ww != ww_to_keep:
+                        spoken_ww = ww.replace("_", " ")
+                        self.log.debug(f"Disabling WW: {ww}")
+                        if self._disable_wake_word(ww, message):
+                            self.speak_dialog("confirm_ww_disabled", {"ww": spoken_ww})
+                            return True
+                        else:
+                            self._speak_disabled_ww_error(spoken_ww)
+                            return False
         else:
             self.log.debug("No available WW found")
             return False

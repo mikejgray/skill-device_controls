@@ -210,23 +210,10 @@ class DeviceControlCenterSkill(NeonSkill):
     @intent_handler("become_neon.intent")
     def handle_become_neon(self, message):
         """Restore default wake words and voice."""
-        # Get system configuration
-        system_config = MycroftSystemConfig()
-        # Set default TTS
-        default_tts_config = system_config.get("tts", {})
-        if not default_tts_config:
-            LOG.error("No default TTS config found")
-            return
-        patch_config(default_tts_config)
-        # Set default wake words
-        default_ww_config = system_config.get("hotwords")
-        if not default_ww_config:
-            LOG.warning("No default WW config found")
-            return
-        patch_config(default_ww_config)
-        # Set default user config
         self._set_user_neon_tts_settings()
-        # Speak confirmation
+        self._enable_wake_word("hey_neon", message)
+        self._disable_all_other_wake_words(message, "hey_neon")
+        self._set_neon_voice()
         self.speak_dialog("neon_confirmation", message=message)
 
     @intent_handler("ironman.intent")
@@ -237,7 +224,6 @@ class DeviceControlCenterSkill(NeonSkill):
         Uses remote Mimic3 with en_UK/apope_low voice
         Uses openwakeword "Hey Jarvis" ww
         """
-        self.speak_dialog("be_right_back")
         self._set_user_jarvis_tts_settings()
         self._enable_wake_word("hey_jarvis", message)
         self._disable_all_other_wake_words(message, "hey_jarvis")
@@ -435,10 +421,7 @@ class DeviceControlCenterSkill(NeonSkill):
         self.speak_dialog("wakeword_failed_to_disable", {"ww": spoken_ww})
 
     def _set_jarvis_voice(self) -> None:
-        """Disable current TTS and enable mimic3-server plugin."""
-        # Default config for ovos-tts-server-plugin uses the public OVOS Piper servers
-        # Since this is meant for non-technical users, the default is best
-        # NOTE: There is no fallback because Neon Mk2 does not ship with Piper
+        """Disable current TTS and enable piper plugin."""
         jarvis_config = {
             "tts": {
                 "module": "ovos-tts-plugin-piper",
@@ -448,8 +431,21 @@ class DeviceControlCenterSkill(NeonSkill):
         LOG.debug("Patching user config for Jarvis TTS")
         patch_config(jarvis_config)
 
+    def _set_neon_voice(self) -> None:
+        """Disable current TTS and enable Coqui plugins."""
+        neon_config = {
+            "tts": {
+                "module": "neon-tts-plugin-coqui-remote",
+                "fallback_module": "coqui",
+                "neon-tts-plugin-larynx-server": {"host": "https://larynx.2022.us"},
+                "mozilla_remote": {"api_url": "https://mtts.2022.us/api/tts"},
+            }
+        }
+        LOG.debug("Patching user config for Neon TTS")
+        patch_config(neon_config)
+
     def _set_user_jarvis_tts_settings(self) -> None:
-        """Update user ngi_user_info.yml with male settings and en-gb locale."""
+        """Update user ngi_user_info.yml with male settings and en-us locale."""
         # {
         #         "tts_language": "en-us",
         #         "tts_gender": "male",
@@ -464,23 +460,14 @@ class DeviceControlCenterSkill(NeonSkill):
 
     def _set_user_neon_tts_settings(self) -> None:
         """Update user ngi_user_info.yml with female settings and en-us locale."""
-        neon_config = {
-            "speech": {
-                "tts_language": "en-us",
-                "tts_gender": "female",
-                "secondary_tts_gender": "female",
-            }
-        }
+            # "speech": {
+            #     "tts_language": "en-us",
+            #     "tts_gender": "female",
+            #     "secondary_tts_gender": "female",
+            # }
         LOG.debug("Patching user ngi config for Neon TTS")
-        NGIConfig("ngi_local_config").update_keys(neon_config)
-
-
-# if __name__ == "__main__":
-#     from ovos_workshop.skill_launcher import SkillLoader
-#     from ovos_utils.messagebus import get_mycroft_bus
-
-#     bus = get_mycroft_bus()
-#     skill_loader = SkillLoader(bus, "skill-device_controls.neongeckocom")
-#     skill_loader.load()
-#     skill = skill_loader.instance
-#     print("break")
+        user_config = NGIConfig("ngi_local_config", force_reload=True)
+        user_config["speech"]["tts_language"] = "en-us"
+        user_config["speech"]["tts_gender"] = "female"
+        user_config["speech"]["secondary_tts_gender"] = "female"
+        user_config.write_changes()

@@ -36,7 +36,6 @@ from neon_utils.message_utils import dig_for_message
 from neon_utils.skills.neon_skill import NeonSkill
 from neon_utils.validator_utils import numeric_confirmation_validator
 from ovos_bus_client import Message
-from ovos_config.models import MycroftSystemConfig
 from ovos_utils import classproperty
 from ovos_utils.intents import IntentBuilder
 from ovos_utils.log import LOG
@@ -214,14 +213,14 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_neon", message)
         self._disable_all_other_wake_words(message, "hey_neon")
         self._set_neon_voice()
-        self.speak_dialog("neon_confirmation", message=message)
+        self.speak_dialog("neon_confirmation")
 
     @intent_handler("ironman.intent")
     def handle_ironman_intent(self, message):
         """
         Handle a user request to enable IronMan mode.
         Switches the voice from female to male
-        Uses remote Mimic3 with en_UK/apope_low voice
+        Uses local Piper with en-us/alan-low voice
         Uses openwakeword "Hey Jarvis" ww
         """
         self._set_user_jarvis_tts_settings()
@@ -335,7 +334,7 @@ class DeviceControlCenterSkill(NeonSkill):
         resp = self._emit_enable_ww_message(ww, message)
         if resp.data.get('error') == "ww not configured":
             LOG.warning(f"WW not configured at the system level, patching: {ww}")
-            patch_config({"hotwords": {"hey_jarvis": {"active": True, "listen": True}}})
+            patch_config({"hotwords": {ww: {"active": True, "listen": True}}})
             resp = self._emit_enable_ww_message(ww, message)
             if resp and resp.data.get("error"):
                 self.log.error(f"WW enable failed with response: {resp.data}")

@@ -235,7 +235,6 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_jarvis", message)
         self._disable_all_other_wake_words(message, "hey_jarvis")
         self._set_jarvis_voice()
-        # TODO: Restart the appropriate service?
         self.speak_dialog("jarvis_confirmation")
 
     @intent_handler(IntentBuilder("ChangeWakeWordIntent")
@@ -435,8 +434,8 @@ class DeviceControlCenterSkill(NeonSkill):
         # NOTE: There is no fallback because Neon Mk2 does not ship with Piper
         jarvis_config = {
             "tts": {
-                "module": "ovos-tts-plugin-server",
-                "ovos-tts-plugin-server": {"url": "https://tts.smartgic.io/piper"}
+                "module": "ovos-tts-plugin-piper",
+                "ovos-tts-plugin-piper": {"lang": "en-us", "voice": "alan-low"}
             }
         }
         LOG.debug("Patching user config for Jarvis TTS")
@@ -445,13 +444,13 @@ class DeviceControlCenterSkill(NeonSkill):
     def _set_user_jarvis_tts_settings(self) -> None:
         """Update user ngi_user_info.yml with male settings and en-gb locale."""
         # {
-        #         "tts_language": "en-gb",
+        #         "tts_language": "en-us",
         #         "tts_gender": "male",
         #         "secondary_tts_gender": "male",
         # }
         LOG.debug("Patching user ngi config for Jarvis TTS")
         user_config = NGIConfig("ngi_user_info", force_reload=True)
-        user_config["speech"]["tts_language"] = "en-gb"
+        user_config["speech"]["tts_language"] = "en-us"
         user_config["speech"]["tts_gender"] = "male"
         user_config["speech"]["secondary_tts_gender"] = "male"
         user_config.write_changes()

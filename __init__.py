@@ -199,6 +199,20 @@ class DeviceControlCenterSkill(NeonSkill):
                                       {"enabled": enabled}))
         # TODO: Handle this event DM
 
+    @intent_handler("classic_mycroft.intent")
+    def handle_classic_mycroft_intent(self, message):
+        """
+        Give the user a classic Mycroft experience.
+        Switches the voice to male
+        Uses local Mimic with the classic apope voice
+        Uses precise-lite "Hey Mycroft" ww
+        """
+        self._set_user_mycroft_tts_settings()
+        self._enable_wake_word("hey_mycroft", message)
+        self._disable_all_other_wake_words(message, "hey_mycroft")
+        self._set_mycroft_voice()
+        self.speak_dialog("mycroft_confirmation")
+
     @intent_handler("become_neon.intent")
     def handle_become_neon(self, message):
         """Restore default wake words and voice."""
@@ -412,6 +426,16 @@ class DeviceControlCenterSkill(NeonSkill):
         """Speak an error message when a wake word fails to disable."""
         self.speak_dialog("wakeword_failed_to_disable", {"ww": spoken_ww})
 
+    def _set_mycroft_voice(self) -> None:
+        """Disable current TTS and enable mimic plugin."""
+        classic_mycroft_config = {
+            "tts": {
+                "module": "ovos-tts-plugin-mimic"
+            }
+        }
+        LOG.debug("Patching user config for Mimic Alan Pope (classic Mycroft) TTS")
+        patch_config(classic_mycroft_config)
+
     def _set_jarvis_voice(self) -> None:
         """Disable current TTS and enable piper plugin."""
         jarvis_config = {
@@ -446,6 +470,20 @@ class DeviceControlCenterSkill(NeonSkill):
         LOG.debug("Patching user ngi config for Jarvis TTS")
         user_config = NGIConfig("ngi_user_info", force_reload=True)
         user_config["speech"]["tts_language"] = "en-us"
+        user_config["speech"]["tts_gender"] = "male"
+        user_config["speech"]["secondary_tts_gender"] = "male"
+        user_config.write_changes()
+
+    def _set_user_mycroft_tts_settings(self) -> None:
+        """Update user ngi_user_info.yml with male settings and en-gb locale."""
+        # {
+        #         "tts_language": "en-gb",
+        #         "tts_gender": "male",
+        #         "secondary_tts_gender": "male",
+        # }
+        LOG.debug("Patching user ngi config for classic Mycroft TTS")
+        user_config = NGIConfig("ngi_user_info", force_reload=True)
+        user_config["speech"]["tts_language"] = "en-gb"
         user_config["speech"]["tts_gender"] = "male"
         user_config["speech"]["secondary_tts_gender"] = "male"
         user_config.write_changes()

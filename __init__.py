@@ -496,7 +496,7 @@ class DeviceControlCenterSkill(NeonSkill):
             #     "secondary_tts_gender": "female",
             # }
         LOG.debug("Patching user ngi config for Neon TTS")
-        user_config = NGIConfig("ngi_local_config", force_reload=True)
+        user_config = NGIConfig("ngi_user_info", force_reload=True)
         user_config["speech"]["tts_language"] = "en-us"
         user_config["speech"]["tts_gender"] = "female"
         user_config["speech"]["secondary_tts_gender"] = "female"

@@ -211,6 +211,7 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_mycroft", message)
         self._disable_all_other_wake_words(message, "hey_mycroft")
         self._set_mycroft_voice()
+        # TODO: Emit system.mycroft.service.restart to restart neon-audio?
         self.speak_dialog("mycroft_confirmation")
 
     @intent_handler("become_neon.intent")
@@ -220,6 +221,7 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_neon", message)
         self._disable_all_other_wake_words(message, "hey_neon")
         self._set_neon_voice()
+        # TODO: Emit system.mycroft.service.restart to restart neon-audio?
         self.speak_dialog("neon_confirmation")
 
     @intent_handler("ironman.intent")
@@ -234,6 +236,7 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_jarvis", message)
         self._disable_all_other_wake_words(message, "hey_jarvis")
         self._set_jarvis_voice()
+        # TODO: Emit system.mycroft.service.restart to restart neon-audio?
         self.speak_dialog("jarvis_confirmation")
 
     @intent_handler(IntentBuilder("ChangeWakeWordIntent")

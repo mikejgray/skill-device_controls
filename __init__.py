@@ -52,6 +52,9 @@ class SystemCommand(Enum):
 class DeviceControlCenterSkill(NeonSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._pending_audio_restart = False
+        self._dialog_to_speak = ""
+        self.bus.on("mycroft.ready", self._speak_restart_dialog())
         
     @classproperty
     def runtime_requirements(self):
@@ -218,8 +221,9 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_mycroft", message)
         self._disable_all_other_wake_words(message, "hey_mycroft")
         self._set_mycroft_voice()
-        # TODO: Emit system.mycroft.service.restart to restart neon-audio?
-        self.speak_dialog("mycroft_confirmation")
+        self.bus.emit(Message("system.mycroft.service.restart", data={"display": True}))
+        self._pending_audio_restart = True
+        self._dialog_to_speak = "mycroft_confirmation"
 
     @intent_handler("become_neon.intent")
     def handle_become_neon(self, message):
@@ -228,8 +232,9 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_neon", message)
         self._disable_all_other_wake_words(message, "hey_neon")
         self._set_neon_voice()
-        # TODO: Emit system.mycroft.service.restart to restart neon-audio?
-        self.speak_dialog("neon_confirmation")
+        self.bus.emit(Message("system.mycroft.service.restart", data={"display": True}))
+        self._pending_audio_restart = True
+        self._dialog_to_speak = "neon_confirmation"
 
     @intent_handler("ironman.intent")
     def handle_ironman_intent(self, message):
@@ -243,8 +248,9 @@ class DeviceControlCenterSkill(NeonSkill):
         self._enable_wake_word("hey_jarvis", message)
         self._disable_all_other_wake_words(message, "hey_jarvis")
         self._set_jarvis_voice()
-        # TODO: Emit system.mycroft.service.restart to restart neon-audio?
-        self.speak_dialog("jarvis_confirmation")
+        self.bus.emit(Message("system.mycroft.service.restart", data={"display": True}))
+        self._pending_audio_restart = True
+        self._dialog_to_speak = "jarvis_confirmation"
 
     @intent_handler(IntentBuilder("ChangeWakeWordIntent")
                     .require("change").require("ww").optionally("rx_wakeword"))
@@ -331,6 +337,14 @@ class DeviceControlCenterSkill(NeonSkill):
 
     def stop(self):
         pass
+    
+    def _speak_restart_dialog(self, message: Message):
+        """Handle speaking a confirmation dialog after a restart."""
+        if self._dialog_to_speak and self._pending_audio_restart:
+            self.log.info(f"Neon has restarted, speaking dialog {self._dialog_to_speak}")
+            self.speak_dialog(self._dialog_to_speak)
+            self._dialog_to_speak = None
+            self._pending_audio_restart = False
 
     def _emit_enable_ww_message(self, ww: str, message: Message) -> Optional[Message]:
         # This has to reload the recognizer loop, so allow more time to respond

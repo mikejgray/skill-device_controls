@@ -27,12 +27,18 @@
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from enum import Enum
+from posixpath import expanduser
 from random import randint
-from ovos_bus_client import Message
+from typing import Optional, List
+from neon_utils.skills.neon_skill import NeonSkill
+from neon_utils.configuration_utils import NGIConfig
+from neon_utils.validator_utils import numeric_confirmation_validator
+from ovos_bus_client.message import dig_for_message, Message
+from ovos_config.config import update_mycroft_config
 from ovos_utils import classproperty
-from ovos_utils.intents import IntentBuilder
 from ovos_utils.log import LOG
 from ovos_utils.process_utils import RuntimeRequirements
+from ovos_utils.intents import IntentBuilder
 from ovos_workshop.decorators import intent_file_handler, intent_handler
 
 
@@ -47,7 +53,8 @@ class DeviceControlCenterSkill(NeonSkill):
         super().__init__(*args, **kwargs)
         self._pending_audio_restart = False
         self._dialog_to_speak = ""
-        self.bus.on("mycroft.ready", self._speak_restart_dialog())
+        self.bus.on("mycroft.ready", self._speak_restart_dialog)
+        self.user_config_path = expanduser("~/.config/neon/neon.yaml")
         
     @classproperty
     def runtime_requirements(self):
@@ -81,7 +88,7 @@ class DeviceControlCenterSkill(NeonSkill):
         """
         message = dig_for_message() or Message("neon.get_wake_words")
         resp = self.bus.wait_for_response(
-            message.forward("neon.get_wake_words"), "neon.wake_words")
+                message.forward("neon.get_wake_words"), "neon.wake_words")
         return resp.data if resp else None
 
     @intent_handler(IntentBuilder("ExitShutdownIntent").require("request")
@@ -202,7 +209,6 @@ class DeviceControlCenterSkill(NeonSkill):
                                       {"enabled": enabled}))
         # TODO: Handle this event DM
 
-    @intent_handler("classic_mycroft.intent")
     def handle_classic_mycroft_intent(self, message):
         """
         Give the user a classic Mycroft experience.
@@ -210,7 +216,7 @@ class DeviceControlCenterSkill(NeonSkill):
         Uses local Mimic with the classic apope voice
         Uses precise-lite "Hey Mycroft" ww
         """
-        self._set_user_mycroft_tts_settings()
+        self._set_user_tts_settings("mycroft")
         self._enable_wake_word("hey_mycroft", message)
         self._disable_all_other_wake_words(message, "hey_mycroft")
         self._set_mycroft_voice()
@@ -221,7 +227,7 @@ class DeviceControlCenterSkill(NeonSkill):
     @intent_handler("become_neon.intent")
     def handle_become_neon(self, message):
         """Restore default wake words and voice."""
-        self._set_user_neon_tts_settings()
+        self._set_user_tts_settings("neon")
         self._enable_wake_word("hey_neon", message)
         self._disable_all_other_wake_words(message, "hey_neon")
         self._set_neon_voice()
@@ -237,7 +243,7 @@ class DeviceControlCenterSkill(NeonSkill):
         Uses local Piper with en-us/alan-low voice
         Uses openwakeword "Hey Jarvis" ww
         """
-        self._set_user_jarvis_tts_settings()
+        self._set_user_tts_settings("jarvis")
         self._enable_wake_word("hey_jarvis", message)
         self._disable_all_other_wake_words(message, "hey_jarvis")
         self._set_jarvis_voice()
@@ -356,10 +362,18 @@ class DeviceControlCenterSkill(NeonSkill):
         """
         self.log.debug(f"Attempting to enable WW: {ww}")
         resp = self._emit_enable_ww_message(ww, message)
+        if not resp:
+            LOG.error(f"No response to WW enable request for {ww}!")
+            self.speak_dialog("error_ww_change_failed")
+            return False
         if resp.data.get('error') == "ww not configured":
             LOG.warning(f"WW not configured at the system level, patching: {ww}")
-            patch_config({"hotwords": {ww: {"active": True, "listen": True}}})
+            update_mycroft_config({"hotwords": {ww: {"active": True, "listen": True}}})
             resp = self._emit_enable_ww_message(ww, message)
+            if not resp:
+                LOG.error(f"No response to WW enable request for {ww}!")
+                self.speak_dialog("error_ww_change_failed")
+                return False
             if resp and resp.data.get("error"):
                 self.log.error(f"WW enable failed with response: {resp.data}")
                 return False
@@ -421,9 +435,8 @@ class DeviceControlCenterSkill(NeonSkill):
                         else:
                             self._speak_disabled_ww_error(spoken_ww)
                             return False
-        else:
-            self.log.debug("No available WW found")
-            return False
+        self.log.debug("No available WW found")
+        return False
 
     def _get_wakewords(self) -> Optional[dict]:
         """Get a dict of available configured wake words."""
@@ -451,7 +464,7 @@ class DeviceControlCenterSkill(NeonSkill):
             }
         }
         LOG.debug("Patching user config for Mimic Alan Pope (classic Mycroft) TTS")
-        patch_config(classic_mycroft_config)
+        update_mycroft_config(classic_mycroft_config, bus=self.bus)
 
     def _set_jarvis_voice(self) -> None:
         """Disable current TTS and enable piper plugin."""
@@ -462,7 +475,7 @@ class DeviceControlCenterSkill(NeonSkill):
             }
         }
         LOG.debug("Patching user config for Jarvis TTS")
-        patch_config(jarvis_config)
+        update_mycroft_config(jarvis_config, bus=self.bus)
 
     def _set_neon_voice(self) -> None:
         """Disable current TTS and enable Coqui plugins."""
@@ -475,46 +488,30 @@ class DeviceControlCenterSkill(NeonSkill):
             }
         }
         LOG.debug("Patching user config for Neon TTS")
-        patch_config(neon_config)
+        update_mycroft_config(neon_config, bus=self.bus)
 
-    def _set_user_jarvis_tts_settings(self) -> None:
-        """Update user ngi_user_info.yml with male settings and en-us locale."""
-        # {
-        #         "tts_language": "en-us",
-        #         "tts_gender": "male",
-        #         "secondary_tts_gender": "male",
-        # }
-        LOG.debug("Patching user ngi config for Jarvis TTS")
-        user_config = NGIConfig("ngi_user_info", force_reload=True)
-        user_config["speech"]["tts_language"] = "en-us"
-        user_config["speech"]["tts_gender"] = "male"
-        user_config["speech"]["secondary_tts_gender"] = "male"
+    def _set_user_tts_settings(self, persona: str):
+        """Update user ngi_user_info.yml with settings for the requested persona."""
+        LOG.debug(f"Patching user ngi config for persona {persona}")
+        user_config: Optional[NGIConfig] = self._retrieve_ngi_config()
+        if not user_config:
+            return  # Error logging already happens in method above
+        if persona == "mycroft":
+            self._write_tts_lang_and_gender(user_config=user_config, lang="en-gb", gender="male")
+        elif persona == "neon":
+            self._write_tts_lang_and_gender(user_config=user_config, lang="en-us", gender="female")
+        elif persona == "jarvis":
+            self._write_tts_lang_and_gender(user_config=user_config, lang="en-us", gender="male")
+        else:
+            LOG.error(f"Unknown persona requested: {persona}")
+
+    def _write_tts_lang_and_gender(self, user_config: NGIConfig, lang: str, gender: str) -> None:
+        user_config.populate(content={"speech": {"tts_language": lang, "tts_gender": gender, "secondary_tts_gender": gender}})
         user_config.write_changes()
 
-    def _set_user_mycroft_tts_settings(self) -> None:
-        """Update user ngi_user_info.yml with male settings and en-gb locale."""
-        # {
-        #         "tts_language": "en-gb",
-        #         "tts_gender": "male",
-        #         "secondary_tts_gender": "male",
-        # }
-        LOG.debug("Patching user ngi config for classic Mycroft TTS")
-        user_config = NGIConfig("ngi_user_info", force_reload=True)
-        user_config["speech"]["tts_language"] = "en-gb"
-        user_config["speech"]["tts_gender"] = "male"
-        user_config["speech"]["secondary_tts_gender"] = "male"
-        user_config.write_changes()
-
-    def _set_user_neon_tts_settings(self) -> None:
-        """Update user ngi_user_info.yml with female settings and en-us locale."""
-            # "speech": {
-            #     "tts_language": "en-us",
-            #     "tts_gender": "female",
-            #     "secondary_tts_gender": "female",
-            # }
+    def _retrieve_ngi_config(self) -> Optional[NGIConfig]:
         LOG.debug("Patching user ngi config for Neon TTS")
-        user_config = NGIConfig("ngi_user_info", force_reload=True)
-        user_config["speech"]["tts_language"] = "en-us"
-        user_config["speech"]["tts_gender"] = "female"
-        user_config["speech"]["secondary_tts_gender"] = "female"
-        user_config.write_changes()
+        user_config = NGIConfig(name="ngi_user_info", force_reload=True)
+        if user_config is None:
+            LOG.error("No user config found! Please submit a ticket to Neon - this is unusual.")
+        return user_config

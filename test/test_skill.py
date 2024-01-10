@@ -28,14 +28,14 @@
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import shutil
-import tempfile
-import shutil
+from time import sleep
 import pytest
 
 from neon_minerva.tests.skill_unit_test_base import SkillTestCase
+from neon_utils.configuration_utils import NGIConfig
 
 from threading import Event
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from ovos_bus_client.message import Message
 
 
@@ -43,24 +43,32 @@ WW_STATE = True
 
 
 def _ww_enabled(message):
-    TestSkillMethods.bus.emit(message.response({'enabled': WW_STATE}))
+    TestSkillMethods.bus.emit(message.response({"enabled": WW_STATE}))
 
 
 class TestSkillMethods(SkillTestCase):
-
     @classmethod
     def setUpClass(cls) -> None:
         SkillTestCase.setUpClass()
-        cls.bus.on('neon.query_wake_words_state', _ww_enabled)
+        cls.bus.on("neon.query_wake_words_state", _ww_enabled)
 
         # Mock exit/shutdown method to prevent interactions with test runner
         cls.skill._do_exit_shutdown = Mock()
 
         # Common wakeword configurations
         cls.single_ww = {"hey_neon": {"active": True}}
-        cls.two_active_ww = {"hey_neon": {"active": True}, "hey_mycroft": {"active": True}}
-        cls.one_in_two_active_ww = {"hey_neon": {"active": True}, "hey_mycroft": {"active": False}}
-        cls.configured_but_not_active_ww = {"hey_neon": {"active": False}, "hey_mycroft": {"active": False}}
+        cls.two_active_ww = {
+            "hey_neon": {"active": True},
+            "hey_mycroft": {"active": True},
+        }
+        cls.one_in_two_active_ww = {
+            "hey_neon": {"active": True},
+            "hey_mycroft": {"active": False},
+        }
+        cls.configured_but_not_active_ww = {
+            "hey_neon": {"active": False},
+            "hey_mycroft": {"active": False},
+        }
 
     def setUp(self):
         SkillTestCase.setUp(self)
@@ -74,7 +82,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.remove_all_listeners("neon.get_wake_words")
         self.skill.bus.remove_all_listeners("neon.enable_wake_word")
         self.skill.bus.remove_all_listeners("neon.disable_wake_word")
-        shutil.rmtree(self.temp_dir)
+        shutil.rmtree(self.test_fs)
 
     def test_00_skill_init(self):
         # Test any parameters expected to be set in init or initialize methods
@@ -107,8 +115,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.get_response = get_response
         self.skill.handle_exit_shutdown_intent(message)
         self.skill._do_exit_shutdown.assert_called()
-        self.assertEqual(self.skill._do_exit_shutdown.call_args[0][0].name,
-                         "EXIT")
+        self.assertEqual(self.skill._do_exit_shutdown.call_args[0][0].name, "EXIT")
 
         self.skill.get_response = default_get_response
 
@@ -135,8 +142,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.get_response = get_response
         self.skill.handle_exit_shutdown_intent(message)
         self.skill._do_exit_shutdown.assert_called()
-        self.assertEqual(self.skill._do_exit_shutdown.call_args[0][0].name,
-                         "SHUTDOWN")
+        self.assertEqual(self.skill._do_exit_shutdown.call_args[0][0].name, "SHUTDOWN")
 
         self.skill.get_response = default_get_response
 
@@ -163,8 +169,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.get_response = get_response
         self.skill.handle_exit_shutdown_intent(message)
         self.skill._do_exit_shutdown.assert_called()
-        self.assertEqual(self.skill._do_exit_shutdown.call_args[0][0].name,
-                         "RESTART")
+        self.assertEqual(self.skill._do_exit_shutdown.call_args[0][0].name, "RESTART")
 
         self.skill.get_response = default_get_response
 
@@ -218,8 +223,7 @@ class TestSkillMethods(SkillTestCase):
         default_get_response = self.skill.get_response
         self.skill.get_response = get_response
         self.skill.handle_exit_shutdown_intent(message)
-        self.skill.speak_dialog.assert_called_with("confirm_cancel",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("confirm_cancel", private=True)
         self.skill._do_exit_shutdown.assert_not_called()
 
         self.skill.get_response = default_get_response
@@ -230,7 +234,7 @@ class TestSkillMethods(SkillTestCase):
         msg = Message("test")
         self.skill.handle_exit_intent(msg)
         self.skill.handle_exit_shutdown_intent.assert_called_once_with(msg)
-        self.assertTrue(msg.data.get('exit'))
+        self.assertTrue(msg.data.get("exit"))
         self.skill.handle_exit_shutdown_intent = real_method
 
     def test_handle_restart_intent(self):
@@ -239,7 +243,7 @@ class TestSkillMethods(SkillTestCase):
         msg = Message("test")
         self.skill.handle_restart_intent(msg)
         self.skill.handle_exit_shutdown_intent.assert_called_once_with(msg)
-        self.assertTrue(msg.data.get('restart'))
+        self.assertTrue(msg.data.get("restart"))
         self.skill.handle_exit_shutdown_intent = real_method
 
     def test_handle_shutdown_intent(self):
@@ -248,15 +252,17 @@ class TestSkillMethods(SkillTestCase):
         msg = Message("test")
         self.skill.handle_shutdown_intent(msg)
         self.skill.handle_exit_shutdown_intent.assert_called_once_with(msg)
-        self.assertTrue(msg.data.get('shutdown'))
+        self.assertTrue(msg.data.get("shutdown"))
         self.skill.handle_exit_shutdown_intent = real_method
 
     def test_handle_skip_wake_words_confirmed(self):
         global WW_STATE
         WW_STATE = True
-        message = Message("valid_intent", {"neon": "Neon", "ww": "wake words",
-                                           "start_sww": "begin"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "start_sww": "begin"},
+            {"test_context": "something"},
+        )
 
         called = False
 
@@ -281,8 +287,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.wake_words_state", on_wake_words_state)
 
         self.skill.handle_skip_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("confirm_skip_ww",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("confirm_skip_ww", private=True)
         self.assertTrue(called)
         self.assertFalse(self.skill.ww_enabled)
 
@@ -291,9 +296,11 @@ class TestSkillMethods(SkillTestCase):
     def test_handle_skip_wake_words_declined(self):
         global WW_STATE
         WW_STATE = True
-        message = Message("valid_intent", {"neon": "Neon", "ww": "wake words",
-                                           "start_sww": "begin"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "start_sww": "begin"},
+            {"test_context": "something"},
+        )
 
         called = False
 
@@ -316,8 +323,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.wake_words_state", on_wake_words_state)
 
         self.skill.handle_skip_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("not_doing_anything",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("not_doing_anything", private=True)
         self.assertFalse(called)
         self.assertTrue(self.skill.ww_enabled)
 
@@ -326,10 +332,11 @@ class TestSkillMethods(SkillTestCase):
     def test_handle_skip_wake_words_unconfirmed(self):
         global WW_STATE
         WW_STATE = True
-        message = Message("valid_intent", {"neon": "Neon",
-                                           "ww": "wake words",
-                                           "start_sww": "begin"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "start_sww": "begin"},
+            {"test_context": "something"},
+        )
 
         called = False
 
@@ -352,8 +359,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.wake_words_state", on_wake_words_state)
 
         self.skill.handle_skip_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("not_doing_anything",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("not_doing_anything", private=True)
         self.assertFalse(called)
         self.assertTrue(self.skill.ww_enabled)
 
@@ -362,20 +368,22 @@ class TestSkillMethods(SkillTestCase):
     def test_handle_skip_wake_words_already_skipping(self):
         global WW_STATE
         WW_STATE = False
-        message = Message("valid_intent", {"neon": "Neon", "ww": "wake words",
-                                           "start_sww": "begin"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "start_sww": "begin"},
+            {"test_context": "something"},
+        )
         self.skill.handle_skip_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("already_skipping",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("already_skipping", private=True)
 
     def test_handle_use_wake_words_confirmed(self):
         global WW_STATE
         WW_STATE = False
-        message = Message("valid_intent", {"neon": "Neon",
-                                           "ww": "wake words",
-                                           "stop_sww": "quit"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "stop_sww": "quit"},
+            {"test_context": "something"},
+        )
 
         called = False
 
@@ -398,8 +406,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.wake_words_state", on_wake_words_state)
 
         self.skill.handle_use_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("confirm_require_ww",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("confirm_require_ww", private=True)
         self.assertTrue(called)
 
         self.skill.ask_yesno = default_ask_yesno
@@ -407,10 +414,11 @@ class TestSkillMethods(SkillTestCase):
     def test_handle_use_wake_words_declined(self):
         global WW_STATE
         WW_STATE = False
-        message = Message("valid_intent", {"neon": "Neon",
-                                           "ww": "wake words",
-                                           "stop_sww": "quit"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "stop_sww": "quit"},
+            {"test_context": "something"},
+        )
 
         called = False
 
@@ -433,8 +441,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.wake_words_state", on_wake_words_state)
 
         self.skill.handle_use_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("not_doing_anything",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("not_doing_anything", private=True)
         self.assertFalse(called)
 
         self.skill.ask_yesno = default_ask_yesno
@@ -442,10 +449,11 @@ class TestSkillMethods(SkillTestCase):
     def test_handle_use_wake_words_unconfirmed(self):
         global WW_STATE
         WW_STATE = False
-        message = Message("valid_intent", {"neon": "Neon",
-                                           "ww": "wake words",
-                                           "stop_sww": "quit"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "stop_sww": "quit"},
+            {"test_context": "something"},
+        )
 
         called = False
 
@@ -468,8 +476,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.once("neon.wake_words_state", on_wake_words_state)
 
         self.skill.handle_use_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("not_doing_anything",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("not_doing_anything", private=True)
         self.assertFalse(called)
 
         self.skill.ask_yesno = default_ask_yesno
@@ -477,13 +484,13 @@ class TestSkillMethods(SkillTestCase):
     def test_handle_use_wake_words_already_requiring(self):
         global WW_STATE
         WW_STATE = True
-        message = Message("valid_intent", {"neon": "Neon",
-                                           "ww": "wake words",
-                                           "stop_sww": "quit"},
-                          {"test_context": "something"})
+        message = Message(
+            "valid_intent",
+            {"neon": "Neon", "ww": "wake words", "stop_sww": "quit"},
+            {"test_context": "something"},
+        )
         self.skill.handle_use_wake_words(message)
-        self.skill.speak_dialog.assert_called_with("already_requiring",
-                                                   private=True)
+        self.skill.speak_dialog.assert_called_with("already_requiring", private=True)
 
     def test_handle_confirm_listening(self):
         listening_state = None
@@ -534,23 +541,22 @@ class TestSkillMethods(SkillTestCase):
         self.assertFalse(debug_state)
 
     def test_handle_change_ww(self):
-        wake_word_config = {"hey_mycroft": {"active": False},
-                            "hey_neon": {"active": True}}
+        wake_word_config = {
+            "hey_mycroft": {"active": False},
+            "hey_neon": {"active": True},
+        }
 
-        message_change_hey_mycroft = Message("test",
-                                             {"rx_wakeword": "hey mycroft"})
+        message_change_hey_mycroft = Message("test", {"rx_wakeword": "hey mycroft"})
         message_change_hey_neon = Message("test", {"rx_wakeword": "Hey Neon"})
         message_change_invalid_ww = Message("test", {"rx_wakeword": "Nothing"})
-        message_change_no_ww = Message("test",
-                                       {"utterance": "change my wake word"})
+        message_change_no_ww = Message("test", {"utterance": "change my wake word"})
 
         def _handle_get_ww(message):
-            self.skill.bus.emit(message.reply("neon.wake_words",
-                                              wake_word_config))
+            self.skill.bus.emit(message.reply("neon.wake_words", wake_word_config))
 
         # Test API not available
         self.skill.handle_change_ww(message_change_hey_neon)
-        self.skill.speak_dialog.assert_called_with("error_no_ww_api", {"requested_ww": "hey neon"})
+        self.skill.speak_dialog.assert_called_with("error_no_ww_api")
         self.skill.handle_change_ww(message_change_no_ww)
         self.skill.speak_dialog.assert_called_with("error_no_ww_api")
 
@@ -562,82 +568,96 @@ class TestSkillMethods(SkillTestCase):
 
         # Test invalid WW Requested
         self.skill.handle_change_ww(message_change_invalid_ww)
-        self.skill.speak_dialog.assert_called_with("error_invalid_ww_requested",
-                                                   {"requested_ww": "Nothing"})
+        self.skill.speak_dialog.assert_called_with(
+            "error_invalid_ww_requested", {"requested_ww": "Nothing"}
+        )
 
         # Test already enabled
         self.skill.handle_change_ww(message_change_hey_neon)
-        self.skill.speak_dialog.assert_called_with("error_ww_already_enabled",
-                                                   {"requested_ww": "hey neon"})
+        self.skill.speak_dialog.assert_called_with(
+            "error_ww_already_enabled", {"requested_ww": "hey neon"}
+        )
         self.skill.speak_dialog.reset_mock()
 
         # Test already enabled alternate utterance
         message_change_hey_neon_alt = Message(
-            "test", {"rx_wakeword": "haney on",
-                     "utterance": "change my wakeword to haney on",
-                     "utterances": [
-                         "change my wakeword to haney on",
-                         "change my wake word to hey neon"
-                     ]})
+            "test",
+            {
+                "rx_wakeword": "haney on",
+                "utterance": "change my wakeword to haney on",
+                "utterances": [
+                    "change my wakeword to haney on",
+                    "change my wake word to hey neon",
+                ],
+            },
+        )
         self.skill.handle_change_ww(message_change_hey_neon_alt)
-        self.skill.speak_dialog.assert_called_with("error_ww_already_enabled",
-                                                   {"requested_ww": "hey neon"})
+        self.skill.speak_dialog.assert_called_with(
+            "error_ww_already_enabled", {"requested_ww": "hey neon"}
+        )
         self.skill.speak_dialog.reset_mock()
 
         # Test already enabled voc match
         message_change_neon = Message(
-            "test", {"rx_wakeword": "neon",
-                     "utterance": "change my wakeword to neon",
-                     "utterances": []})
+            "test",
+            {
+                "rx_wakeword": "neon",
+                "utterance": "change my wakeword to neon",
+                "utterances": [],
+            },
+        )
         self.skill.handle_change_ww(message_change_neon)
-        self.skill.speak_dialog.assert_called_with("error_ww_already_enabled",
-                                                   {"requested_ww": "hey neon"})
+        self.skill.speak_dialog.assert_called_with(
+            "error_ww_already_enabled", {"requested_ww": "hey neon"}
+        )
 
         # Test change success
         def _handle_enable_ww(message):
-            ww = message.data['wake_word']
-            wake_word_config[ww]['active'] = True
-            self.skill.bus.emit(message.response({"error": False,
-                                                  "active": True,
-                                                  "wake_word": ww}))
+            ww = message.data["wake_word"]
+            wake_word_config[ww]["active"] = True
+            self.skill.bus.emit(
+                message.response({"error": False, "active": True, "wake_word": ww})
+            )
 
         def _handle_disable_ww(message):
-            ww = message.data['wake_word']
-            wake_word_config[ww]['active'] = False
-            self.skill.bus.emit(message.response({"error": False,
-                                                  "active": False,
-                                                  "wake_word": ww}))
+            ww = message.data["wake_word"]
+            wake_word_config[ww]["active"] = False
+            self.skill.bus.emit(
+                message.response({"error": False, "active": False, "wake_word": ww})
+            )
 
         self.skill.bus.on("neon.enable_wake_word", _handle_enable_ww)
         self.skill.bus.on("neon.disable_wake_word", _handle_disable_ww)
 
         self.skill.handle_change_ww(message_change_hey_mycroft)
-        self.assertTrue(wake_word_config['hey_mycroft']['active'])
-        self.assertFalse(wake_word_config['hey_neon']['active'])
-        self.skill.speak_dialog.assert_called_with("confirm_ww_changed",
-                                                   {"wake_word": "hey my-croft"})
+        self.assertTrue(wake_word_config["hey_mycroft"]["active"])
+        self.assertFalse(wake_word_config["hey_neon"]["active"])
+        self.skill.speak_dialog.assert_called_with(
+            "confirm_ww_changed", {"wake_word": "hey my-croft"}
+        )
 
         # Test already enabled, disable other
-        wake_word_config['hey_neon']['active'] = True
-        self.assertTrue(wake_word_config['hey_mycroft']['active'])
-        self.assertTrue(wake_word_config['hey_neon']['active'])
+        wake_word_config["hey_neon"]["active"] = True
+        self.assertTrue(wake_word_config["hey_mycroft"]["active"])
+        self.assertTrue(wake_word_config["hey_neon"]["active"])
 
         real_ask_yesno = self.skill.ask_yesno
         self.skill.ask_yesno = Mock(return_value="no")
         self.skill.handle_change_ww(message_change_hey_neon)
-        self.skill.ask_yesno.assert_called_once_with("ask_disable_ww",
-                                                     {"ww": "hey mycroft"})
-        self.assertTrue(wake_word_config['hey_mycroft']['active'])
-        self.assertTrue(wake_word_config['hey_neon']['active'])
+        self.skill.ask_yesno.assert_called_once_with(
+            "ask_disable_ww", {"ww": "hey mycroft"}
+        )
+        self.assertTrue(wake_word_config["hey_mycroft"]["active"])
+        self.assertTrue(wake_word_config["hey_neon"]["active"])
 
         self.skill.ask_yesno.return_value = "yes"
         self.skill.handle_change_ww(message_change_hey_mycroft)
-        self.skill.ask_yesno.assert_called_with("ask_disable_ww",
-                                                {"ww": "hey neon"})
-        self.skill.speak_dialog.assert_called_with("confirm_ww_disabled",
-                                                   {"ww": "hey neon"})
-        self.assertTrue(wake_word_config['hey_mycroft']['active'])
-        self.assertFalse(wake_word_config['hey_neon']['active'])
+        self.skill.ask_yesno.assert_called_with("ask_disable_ww", {"ww": "hey neon"})
+        self.skill.speak_dialog.assert_called_with(
+            "confirm_ww_disabled", {"ww": "hey neon"}
+        )
+        self.assertTrue(wake_word_config["hey_mycroft"]["active"])
+        self.assertFalse(wake_word_config["hey_neon"]["active"])
 
         self.skill.ask_yesno = real_ask_yesno
 
@@ -645,6 +665,7 @@ class TestSkillMethods(SkillTestCase):
         self.skill.bus.remove("neon.disable_wake_word", _handle_disable_ww)
 
         # Test change no response
+        self.skill.speak_dialog.reset_mock()
         self.skill.handle_change_ww(message_change_hey_neon)
         self.skill.speak_dialog.assert_called_with("error_ww_change_failed")
 
@@ -654,10 +675,13 @@ class TestSkillMethods(SkillTestCase):
 
         disable_ww = Mock()
 
-        self.skill.bus.once("neon.enable_wake_word", _handle_enable_ww)
+        self.skill.bus.on("neon.enable_wake_word", _handle_enable_ww)
         self.skill.bus.once("neon.disable_wake_word", disable_ww)
 
-        self.skill.handle_change_ww(message_change_hey_neon)
+        self.skill.speak_dialog.reset_mock()
+        self.skill.handle_change_ww(
+            message_change_hey_neon
+        )  # TODO: Validate...this shouldn't fail ever? Something is hinky
         self.skill.speak_dialog.assert_called_with("error_ww_change_failed")
         disable_ww.assert_not_called()
 
@@ -672,30 +696,52 @@ class TestSkillMethods(SkillTestCase):
             self.skill.bus.emit(message.response({"ww": "hey_neon"}))
 
         self.skill.bus.once("neon.enable_wake_word", _return_ww_none)
-        self.assertEqual(self.skill._enable_wake_word("hey_neon", Message("neon.enable_wake_word")), False)
+        self.assertEqual(
+            self.skill._enable_wake_word("hey_neon", Message("neon.enable_wake_word")),
+            False,
+        )
         self.skill.bus.once("neon.enable_wake_word", _return_ww_error_response)
-        self.assertEqual(self.skill._enable_wake_word("hey_neon", Message("neon.enable_wake_word")), False)
+        self.assertEqual(
+            self.skill._enable_wake_word("hey_neon", Message("neon.enable_wake_word")),
+            False,
+        )
         self.skill.bus.once("neon.enable_wake_word", _return_ww_response)
-        self.assertEqual(self.skill._enable_wake_word("hey_neon", Message("fake")), True)
+        self.assertEqual(
+            self.skill._enable_wake_word("hey_neon", Message("fake")), True
+        )
 
     def test_disable_ww_none(self):
         def _return_ww_none(message: Message):
             return None
+
         self.skill.bus.once("neon.disable_wake_word", _return_ww_none)
-        self.assertEqual(self.skill._disable_wake_word("hey_neon", Message("neon.disable_wake_word")), False)
+        self.assertEqual(
+            self.skill._disable_wake_word(
+                "hey_neon", Message("neon.disable_wake_word")
+            ),
+            False,
+        )
 
     def test_disable_ww_error(self):
         def _return_ww_error_response(message: Message):
             return message.response({"error": "error message"})
+
         self.skill.bus.once("neon.disable_wake_word", _return_ww_error_response)
-        self.assertEqual(self.skill._disable_wake_word("hey_neon", Message("neon.disable_wake_word")), False)
+        self.assertEqual(
+            self.skill._disable_wake_word(
+                "hey_neon", Message("neon.disable_wake_word")
+            ),
+            False,
+        )
 
     def test_disable_ww_success(self):
         def _return_ww_response(message: Message):
             self.skill.bus.emit(message.response({"ww": "hey_neon"}))
-        self.skill.bus.once("neon.disable_wake_word", _return_ww_response)
-        self.assertEqual(self.skill._disable_wake_word("hey_neon", Message("fake")), True)
 
+        self.skill.bus.once("neon.disable_wake_word", _return_ww_response)
+        self.assertEqual(
+            self.skill._disable_wake_word("hey_neon", Message("fake")), True
+        )
 
     def test_disable_all_ww(self):
         mock_get_ww = self.skill._get_wakewords = Mock()
@@ -704,13 +750,17 @@ class TestSkillMethods(SkillTestCase):
         mock_speak_disabled_ww = self.skill._speak_disabled_ww_error = Mock()
         # if not available_ww, return False
         mock_get_ww.return_value = None
-        self.assertFalse(self.skill._disable_all_wake_words(Message("test")))
+        self.assertFalse(
+            self.skill._disable_all_other_wake_words(Message("test"), "bender")
+        )
         mock_get_ww.assert_called()
         mock_get_ww.reset_mock()
         # if available_ww, but none active
         mock_get_ww.return_value = {"hey_neon": {"active": True}}
         mock_get_enabled_ww.return_value = []
-        self.assertFalse(self.skill._disable_all_wake_words(Message("test")))
+        self.assertFalse(
+            self.skill._disable_all_other_wake_words(Message("test"), "hey_mycroft")
+        )
         mock_get_ww.assert_called()
         mock_get_enabled_ww.assert_called()
         mock_get_enabled_ww.reset_mock()
@@ -718,12 +768,16 @@ class TestSkillMethods(SkillTestCase):
         mock_get_enabled_ww.return_value = ["hey_neon"]
         # if success:
         mock_disable_ww.return_value = True
-        self.assertTrue(self.skill._disable_all_wake_words(Message("test")))
+        self.assertTrue(
+            self.skill._disable_all_other_wake_words(Message("test"), "hey_mycroft")
+        )
         self.skill.speak_dialog.assert_called_once()
         # if failure:
         mock_disable_ww.reset_mock()
         mock_disable_ww.return_value = False
-        self.assertFalse(self.skill._disable_all_wake_words(Message("test")))
+        self.assertFalse(
+            self.skill._disable_all_other_wake_words(Message("test"), "bender")
+        )
         mock_speak_disabled_ww.assert_called()
 
     def test_get_wakewords_empty(self):
@@ -735,7 +789,9 @@ class TestSkillMethods(SkillTestCase):
 
     def test_get_wakewords_basic(self):
         def _return_basic_ww_response(message: Message):
-            self.skill.bus.emit(message.reply("neon.wake_words", self.single_ww, message.context))
+            self.skill.bus.emit(
+                message.reply("neon.wake_words", self.single_ww, message.context)
+            )
 
         # return
         self.skill.bus.once("neon.get_wake_words", _return_basic_ww_response)
@@ -743,84 +799,181 @@ class TestSkillMethods(SkillTestCase):
 
     def test_get_wakewords_two_active(self):
         def _return_two_active_ww_response(message: Message):
-            self.skill.bus.emit(message.reply("neon.wake_words", self.two_active_ww, message.context))
+            self.skill.bus.emit(
+                message.reply("neon.wake_words", self.two_active_ww, message.context)
+            )
 
         self.skill.bus.once("neon.get_wake_words", _return_two_active_ww_response)
         self.assertEqual(self.two_active_ww, self.skill._get_wakewords())
 
     def test_get_wakewords_one_active_two_configured(self):
         def _return_one_active_two_configured_ww_response(message: Message):
-            self.skill.bus.emit(message.reply("neon.wake_words", self.one_in_two_active_ww, message.context))
+            self.skill.bus.emit(
+                message.reply(
+                    "neon.wake_words", self.one_in_two_active_ww, message.context
+                )
+            )
 
-        self.skill.bus.once("neon.get_wake_words", _return_one_active_two_configured_ww_response)
+        self.skill.bus.once(
+            "neon.get_wake_words", _return_one_active_two_configured_ww_response
+        )
         self.assertEqual(self.one_in_two_active_ww, self.skill._get_wakewords())
 
     def test_get_enabled_ww(self):
         # Single active wakeword
-        self.assertListEqual(["hey_neon"], self.skill._get_enabled_wakewords(self.single_ww))
+        self.assertListEqual(
+            ["hey_neon"], self.skill._get_enabled_wakewords(self.single_ww)
+        )
         # Two active wakewords
-        self.assertListEqual(["hey_neon", "hey_mycroft"], self.skill._get_enabled_wakewords(self.two_active_ww))
+        self.assertListEqual(
+            ["hey_neon", "hey_mycroft"],
+            self.skill._get_enabled_wakewords(self.two_active_ww),
+        )
         # Single active wakewords, two in config
-        self.assertListEqual(["hey_neon"], self.skill._get_enabled_wakewords(self.one_in_two_active_ww))
+        self.assertListEqual(
+            ["hey_neon"], self.skill._get_enabled_wakewords(self.one_in_two_active_ww)
+        )
         # No active wakewords, multiple in config
-        self.assertListEqual([], self.skill._get_enabled_wakewords(self.configured_but_not_active_ww))
+        self.assertListEqual(
+            [], self.skill._get_enabled_wakewords(self.configured_but_not_active_ww)
+        )
 
-    @patch("ovos_config.models.MycroftSystemConfig")
-    @patch("neon_core.patch_config")  # NOTE: Will not pass locally without Neon Core installed
-    def test_handle_become_neon(self, mock_patch_config, mock_system_patch_config):
-        self._set_user_neon_tts_settings = Mock()
-        fake_message = Message("test")
-        # no TTS config
-        self.assertIsNone(self.skill.handle_become_neon(fake_message))
-        mock_system_patch_config.assert_called()
-        mock_system_patch_config.reset_mock()
-        # TTS config, no default wakewords (invalid setting but we want to test for it)
-        mock_config = {"tts": {"foo": {"bar": "baz"}}}
-        mock_system_patch_config.return_value = mock_config
-        self.assertIsNone(self.skill.handle_become_neon(fake_message))
-        mock_system_patch_config.reset_mock()
-        # TTS config, default wakewords
-        mock_config = {"tts": {"foo": {"bar": "baz"}}, "hotwords": {"hey_neon": {"active": True}}}
-        mock_system_patch_config.return_value = mock_config
-        mock_patch_config.assert_called_with(mock_config)
-        self._set_user_neon_tts_settings.assert_called()
-        self.skill.speak_dialog.assert_called_with(fake_message)
+    def test_set_mycroft_voice(self):
+        mycroft_config = {"tts": {"module": "ovos-tts-plugin-mimic"}}
+        self.skill._set_mycroft_voice()
+        sleep(2)  # Takes time to change config
+        from ovos_config.config import read_mycroft_config
 
-    @patch("neon_core.patch_config")  # NOTE: Will not pass locally without Neon Core installed
-    def test_set_jarvis_voice(self, mock_patch_config):
-        jarvis_config = {
+        config = read_mycroft_config()
+        self.assertEqual(config["tts"]["module"], mycroft_config["tts"]["module"])
+
+    def test_set_neon_voice(self):
+        neon_config = {
             "tts": {
-                "module": "ovos-tts-plugin-mimic3-server",
-                "ovos-tts-plugin-mimic3-server": {
-                    "voice": "en_UK/apope_low",
-                }
-                # NOTE: There is no fallback because Neon Mk2 does not ship with Mimic3
+                "module": "neon-tts-plugin-coqui-remote",
+                "fallback_module": "coqui",
+                "neon-tts-plugin-larynx-server": {"host": "https://larynx.2022.us"},
+                "mozilla_remote": {"api_url": "https://mtts.2022.us/api/tts"},
             }
         }
-        mock_patch_config.assert_called_with(jarvis_config)
+        self.skill._set_neon_voice()
+        sleep(2)  # Takes time to change config
+        from ovos_config.config import read_mycroft_config
 
-    @patch("neon_utils.configuration_utils.NGIConfig.update_keys")
-    def test_set_user_jarvis_tts_settings(self, mock_update_keys):
-        self.skill._set_user_jarvis_tts_settings()
-        mock_update_keys.assert_called_with({
-            "speech": {
-                "tts_language": "en_UK",
-                "tts_gender": "male",
-                "secondary_tts_gender": "male",
+        config = read_mycroft_config()
+        self.assertEqual(config["tts"]["module"], neon_config["tts"]["module"])
+        self.assertEqual(
+            config["tts"]["fallback_module"], neon_config["tts"]["fallback_module"]
+        )
+        self.assertEqual(
+            config["tts"]["mozilla_remote"], neon_config["tts"]["mozilla_remote"]
+        )
+        self.assertEqual(
+            config["tts"]["neon-tts-plugin-larynx-server"],
+            neon_config["tts"]["neon-tts-plugin-larynx-server"],
+        )
+
+    def test_set_jarvis_voice(self):
+        jarvis_config = {
+            "tts": {
+                "module": "ovos-tts-plugin-piper",
+                "ovos-tts-plugin-piper": {"lang": "en-us", "voice": "alan-low"},
             }
-        })
+        }
+        self.skill._set_jarvis_voice()
+        sleep(2)  # Takes time to change config
+        from ovos_config.config import read_mycroft_config
 
-    @patch("neon_utils.configuration_utils.NGIConfig.update_keys")
-    def test_set_user_neon_tts_settings(self, mock_update_keys):
-        self.skill._set_user_neon_tts_settings()
-        mock_update_keys.assert_called_with({
+        config = read_mycroft_config()
+        self.assertEqual(config["tts"]["module"], jarvis_config["tts"]["module"])
+        self.assertEqual(
+            config["tts"]["ovos-tts-plugin-piper"],
+            jarvis_config["tts"]["ovos-tts-plugin-piper"],
+        )
+
+    @patch("neon_utils.configuration_utils.NGIConfig.populate")
+    @patch("neon_utils.configuration_utils.NGIConfig.write_changes")
+    def test_set_user_jarvis_tts_settings(self, mock_write_changes, mock_populate):
+        self.skill._set_user_tts_settings("jarvis")
+        mock_populate.assert_called_with(
+            content={
+                "speech": {
+                    "tts_language": "en-us",
+                    "tts_gender": "male",
+                    "secondary_tts_gender": "male",
+                }
+            }
+        )
+        mock_write_changes.assert_called()
+
+    @patch("neon_utils.configuration_utils.NGIConfig.populate")
+    @patch("neon_utils.configuration_utils.NGIConfig.write_changes")
+    def test_set_user_neon_tts_settings(self, mock_write_changes, mock_populate):
+        self.skill._set_user_tts_settings("neon")
+        mock_populate.assert_called_with(
+            content={
+                "speech": {
+                    "tts_language": "en-us",
+                    "tts_gender": "female",
+                    "secondary_tts_gender": "female",
+                }
+            }
+        )
+        mock_write_changes.assert_called()
+
+    @patch("neon_utils.configuration_utils.NGIConfig.populate")
+    @patch("neon_utils.configuration_utils.NGIConfig.write_changes")
+    def test_set_user_mycroft_tts_settings(self, mock_write_changes, mock_populate):
+        self.skill._set_user_tts_settings("mycroft")
+        mock_populate.assert_called_with(
+            content={
+                "speech": {
+                    "tts_language": "en-gb",
+                    "tts_gender": "male",
+                    "secondary_tts_gender": "male",
+                }
+            }
+        )
+        mock_write_changes.assert_called()
+
+    @patch("skill_device_controls.DeviceControlCenterSkill._write_tts_lang_and_gender")
+    def test_set_user_tts_settings_jarvis(self, mock_write_tts_lang_and_gender):
+        self.skill._set_user_tts_settings("jarvis")
+        calls = mock_write_tts_lang_and_gender.call_args_list[0][1]
+        self.assertEqual(calls["gender"], "male")
+        self.assertEqual(calls["lang"], second="en-us")
+
+    @patch("skill_device_controls.DeviceControlCenterSkill._write_tts_lang_and_gender")
+    def test_set_user_tts_settings_neon(self, mock_write_tts_lang_and_gender):
+        self.skill._set_user_tts_settings("neon")
+        calls = mock_write_tts_lang_and_gender.call_args_list[0][1]
+        self.assertEqual(calls["gender"], "female")
+        self.assertEqual(calls["lang"], second="en-us")
+
+    @patch("skill_device_controls.DeviceControlCenterSkill._write_tts_lang_and_gender")
+    def test_set_user_tts_settings_mycroft(self, mock_write_tts_lang_and_gender):
+        self.skill._set_user_tts_settings("frederick")
+        mock_write_tts_lang_and_gender.assert_not_called()
+
+    def test_write_tts_lang_and_gender(self):
+        fake_path = f"{self.test_fs}/fake_ngi_config"
+        config = NGIConfig(name="fake_ngi_config", path=fake_path)
+        expected_config = {
             "speech": {
-                "tts_language": "en_US",
+                "tts_language": "fr-fr",
                 "tts_gender": "female",
                 "secondary_tts_gender": "female",
             }
-        })
+        }
+        kwargs = {
+            "user_config": config,
+            "lang": "fr-fr",
+            "gender": "female",
+        }
+        self.skill._write_tts_lang_and_gender(**kwargs)
+        config.write_changes()
+        self.assertEqual(config._load_yaml_file(), expected_config)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main()

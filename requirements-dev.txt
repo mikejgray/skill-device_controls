@@ -1,2 +1,0 @@
-pytest
-ovos_plugin_manager
